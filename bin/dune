@@ -1,0 +1,4 @@
+(executable
+ (public_name zipar)
+ (name main)
+ (libraries zipar cmdliner))

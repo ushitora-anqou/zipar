@@ -1,0 +1,34 @@
+opam-version: "2.0"
+synopsis: "Zipar"
+description: "zipar"
+maintainer: ["Ushitora Anqou"]
+authors: ["Ushitora Anqou"]
+license: "MIT"
+tags: ["caml"]
+homepage: "https://github.com/ushitora-anqou/zipar"
+doc: "https://github.com/ushitora-anqou/zipar"
+bug-reports: "https://github.com/ushitora-anqou/zipar/issues"
+depends: [
+  "ocaml" {>= "4.13"}
+  "dune" {>= "3.16"}
+  "cmdliner"
+  "odoc" {with-doc}
+  "ocamlformat" {= "0.26.2" & with-dev-setup}
+  "ocaml-lsp-server" {with-dev-setup}
+  "ounit2" {with-test}
+]
+build: [
+  ["dune" "subst"] {dev}
+  [
+    "dune"
+    "build"
+    "-p"
+    name
+    "-j"
+    jobs
+    "@install"
+    "@runtest" {with-test}
+    "@doc" {with-doc}
+  ]
+]
+dev-repo: "git+https://github.com/ushitora-anqou/zipar.git"

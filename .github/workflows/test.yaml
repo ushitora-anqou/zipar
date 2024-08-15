@@ -1,0 +1,25 @@
+name: Run unit/integration tests
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions: read-all
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        ocaml-version: ["4.13.1", "4.14.2", "5.1.1", "5.2.0"]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tree
+        uses: actions/checkout@v4
+      - name: Set-up OCaml
+        uses: ocaml/setup-ocaml@v2
+        with:
+          ocaml-compiler: ${{ matrix.ocaml-version }}
+      - run: opam exec -- make setup
+      - run: opam exec -- make test
