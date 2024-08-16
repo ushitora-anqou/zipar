@@ -23,4 +23,14 @@ generate-testdata:
 	mkdir -p test/testdata/testdir1/a
 	echo "aaaaaaaaaaaaaaaaaaaaaaaaaaaaa" > test/testdata/testdir1/a/b
 	echo "ccccccccccccccccccccccccccccc" > test/testdata/testdir1/c
-	cd test/testdata/testdir1; rm -f ../testdir1-inside.zip; zip -0 -r ../testdir1-inside.zip .
+# testdir2
+	mkdir -p test/testdata/testdir2
+	echo "aaaaaaaaaaaaaaaaaaaaaaaaaaaaa" > test/testdata/testdir2/a
+	fallocate -l 5G test/testdata/testdir2/file3g
+	echo "zzzzzzzzzzzzzzzzzzzzzzzzzzzzz" > test/testdata/testdir2/z
+# testdir3
+	mkdir -p test/testdata/testdir3
+	seq 65535 | while read i; do touch test/testdata/testdir3/$${i} & done; wait
+# testdir4
+	mkdir -p test/testdata/testdir4
+	seq 65536 | while read i; do touch test/testdata/testdir4/$${i} & done; wait
