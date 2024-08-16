@@ -183,55 +183,63 @@ let with_output_buffer file_path file_size f =
   let buf = Bigarray.array1_of_genarray buf in
   f buf
 
+let write8 buf off v = Bigstringaf.set buf off v
+let write16le buf off v = Bigstringaf.set_int16_le buf off v
+let write32le buf off v = Bigstringaf.set_int32_le buf off v
+
+let blit src ~src_off dst ~dst_off ~len =
+  Bigstringaf.blit src ~src_off dst ~dst_off ~len
+
+let blit_from_string src ~src_off dst ~dst_off ~len =
+  Bigstringaf.blit_from_string src ~src_off dst ~dst_off ~len
+
 let write_last_mod_file_time_date buf off (mtime : Unix.tm) =
-  let open Bigstringaf in
-  set_int16_le buf off
+  write16le buf off
     ((mtime.tm_hour lsl 11) lor (mtime.tm_min lsl 5)
     lor ((if mtime.tm_sec mod 2 = 0 then 0 else 1) + (mtime.tm_sec / 2)));
-  set_int16_le buf (off + 2)
+  write16le buf (off + 2)
     (((mtime.tm_year - 80) lsl 9)
     lor ((mtime.tm_mon + 1) lsl 5)
     lor mtime.tm_mday);
   off + 4
 
-let write_crc32 buf off entry =
-  let open Bigstringaf in
+let write_crc32 buf entry =
   let checksum =
     if entry.size > 0 then
       with_input_buffer entry.file_path (fun ibuf ->
-          Checkseum.Crc32.(digest_bigstring ibuf 0 entry.size default))
-      |> Optint.to_int32
+          Checkseum.Crc32.(digest_bigstring ibuf 0 entry.size default)
+          |> Optint.to_int32)
     else 0l
   in
-  set_int32_le buf off checksum;
-  off + 4
+  write32le buf (entry.zip_local_file_header_offset + 14) checksum;
+  write32le buf (entry.zip_central_directory_entry_offset + 16) checksum;
+  ()
 
 let write_string buf off s =
   let len = String.length s in
-  Bigstringaf.blit_from_string s ~src_off:0 buf ~dst_off:off ~len;
+  blit_from_string s ~src_off:0 buf ~dst_off:off ~len;
   off + len
 
 let write_entry buf entry =
-  let open Bigstringaf in
   (* *******************
       Local file header
      ******************* *)
   let off = entry.zip_local_file_header_offset in
 
   (* local file header signature     4 bytes  (0x04034b50) *)
-  set_int32_le buf off 0x04034b50l;
+  write32le buf off 0x04034b50l;
   let off = off + 4 in
 
   (* version needed to extract       2 bytes *)
-  set_int16_le buf off 0x000a;
+  write16le buf off 0x000a;
   let off = off + 2 in
 
   (* general purpose bit flag        2 bytes *)
-  set_int16_le buf off 0x0000;
+  write16le buf off 0x0000;
   let off = off + 2 in
 
   (* compression method              2 bytes *)
-  set_int16_le buf off 0x0000;
+  write16le buf off 0x0000;
   let off = off + 2 in
 
   (* last mod file time              2 bytes
@@ -240,23 +248,24 @@ let write_entry buf entry =
     write_last_mod_file_time_date buf off (Unix.localtime entry.stat.st_mtime)
   in
 
-  (* crc-32                          4 bytes *)
-  let off = write_crc32 buf off entry in
+  (* crc-32                          4 bytes
+     This field should be populated by another thread *)
+  let off = off + 4 in
 
   (* compressed size                 4 bytes *)
-  set_int32_le buf off (Int32.of_int entry.size);
+  write32le buf off (Int32.of_int entry.size);
   let off = off + 4 in
 
   (* uncompressed size               4 bytes *)
-  set_int32_le buf off (Int32.of_int entry.size);
+  write32le buf off (Int32.of_int entry.size);
   let off = off + 4 in
 
   (* file name length                2 bytes *)
-  set_int16_le buf off (String.length entry.file_path);
+  write16le buf off (String.length entry.file_path);
   let off = off + 2 in
 
   (* extra field length              2 bytes *)
-  set_int16_le buf off 0x001c;
+  write16le buf off 0x001c;
   let off = off + 2 in
 
   (* file name (variable size) *)
@@ -264,21 +273,21 @@ let write_entry buf entry =
 
   (* extra field (variable size) *)
   (* extra field: extended timestamp (local-header version) *)
-  set_int16_le buf off 0x5455;
-  set_int16_le buf (off + 2) 0x0009;
-  set buf (off + 4) (char_of_int 0x03);
-  set_int32_le buf (off + 5) (Int32.of_float entry.stat.st_mtime);
-  set_int32_le buf (off + 9) (Int32.of_float entry.stat.st_atime);
+  write16le buf off 0x5455;
+  write16le buf (off + 2) 0x0009;
+  write8 buf (off + 4) (char_of_int 0x03);
+  write32le buf (off + 5) (Int32.of_float entry.stat.st_mtime);
+  write32le buf (off + 9) (Int32.of_float entry.stat.st_atime);
   let off = off + 13 in
 
   (* extra field: Info-ZIP Unix (new) *)
-  set_int16_le buf off 0x7875;
-  set_int16_le buf (off + 2) 0x000b;
-  set buf (off + 4) (char_of_int 0x01);
-  set buf (off + 5) (char_of_int 0x04);
-  set_int32_le buf (off + 6) (Int32.of_int entry.stat.st_uid);
-  set buf (off + 10) (char_of_int 0x04);
-  set_int32_le buf (off + 11) (Int32.of_int entry.stat.st_gid);
+  write16le buf off 0x7875;
+  write16le buf (off + 2) 0x000b;
+  write8 buf (off + 4) (char_of_int 0x01);
+  write8 buf (off + 5) (char_of_int 0x04);
+  write32le buf (off + 6) (Int32.of_int entry.stat.st_uid);
+  write8 buf (off + 10) (char_of_int 0x04);
+  write32le buf (off + 11) (Int32.of_int entry.stat.st_gid);
   let off = off + 15 in
 
   (* file data *)
@@ -292,60 +301,61 @@ let write_entry buf entry =
   let off = entry.zip_central_directory_entry_offset in
 
   (* central file header signature   4 bytes  (0x02014b50) *)
-  set_int32_le buf off 0x02014b50l;
+  write32le buf off 0x02014b50l;
   let off = off + 4 in
 
   (* version made by                 2 bytes *)
-  set_int16_le buf off 0x031e;
+  write16le buf off 0x031e;
   let off = off + 2 in
 
   (* version needed to extract       2 bytes *)
-  set_int16_le buf off 0x000a;
+  write16le buf off 0x000a;
   let off = off + 2 in
 
   (* general purpose bit flag        2 bytes *)
-  set_int16_le buf off 0x0000;
+  write16le buf off 0x0000;
   let off = off + 2 in
 
   (* compression method              2 bytes *)
-  set_int16_le buf off 0x0000;
+  write16le buf off 0x0000;
   let off = off + 2 in
 
-  (* last mod file time              2 bytes *)
-  (* last mod file date              2 bytes *)
+  (* last mod file time              2 bytes
+     last mod file date              2 bytes *)
   let off =
     write_last_mod_file_time_date buf off (Unix.localtime entry.stat.st_mtime)
   in
 
-  (* crc-32                          4 bytes *)
-  let off = write_crc32 buf off entry in
+  (* crc-32                          4 bytes
+     This field should be populated by another thread *)
+  let off = off + 4 in
 
   (* compressed size                 4 bytes *)
-  set_int32_le buf off (Int32.of_int entry.size);
+  write32le buf off (Int32.of_int entry.size);
   let off = off + 4 in
 
   (* uncompressed size               4 bytes *)
-  set_int32_le buf off (Int32.of_int entry.size);
+  write32le buf off (Int32.of_int entry.size);
   let off = off + 4 in
 
   (* file name length                2 bytes *)
-  set_int16_le buf off (String.length entry.file_path);
+  write16le buf off (String.length entry.file_path);
   let off = off + 2 in
 
   (* extra field length              2 bytes *)
-  set_int16_le buf off 0x0018;
+  write16le buf off 0x0018;
   let off = off + 2 in
 
   (* file comment length             2 bytes *)
-  set_int16_le buf off 0x0000;
+  write16le buf off 0x0000;
   let off = off + 2 in
 
   (* disk number start               2 bytes *)
-  set_int16_le buf off 0x0000;
+  write16le buf off 0x0000;
   let off = off + 2 in
 
   (* internal file attributes        2 bytes *)
-  set_int16_le buf off 0x0000;
+  write16le buf off 0x0000;
   let off = off + 2 in
 
   (* external file attributes        4 bytes
@@ -366,11 +376,11 @@ let write_entry buf entry =
     | S_DIR -> 0o20
     | _ -> assert false
   in
-  set_int32_le buf off (Int32.of_int ((unix_attr lsl 16) lor dos_attr));
+  write32le buf off (Int32.of_int ((unix_attr lsl 16) lor dos_attr));
   let off = off + 4 in
 
   (* relative offset of local header 4 bytes *)
-  set_int32_le buf off (Int32.of_int entry.zip_local_file_header_offset);
+  write32le buf off (Int32.of_int entry.zip_local_file_header_offset);
   let off = off + 4 in
 
   (* file name (variable size) *)
@@ -378,20 +388,20 @@ let write_entry buf entry =
 
   (* extra field (variable size) *)
   (* extra field: extended timestamp (local-header version) *)
-  set_int16_le buf off 0x5455;
-  set_int16_le buf (off + 2) 0x0005;
-  set buf (off + 4) (char_of_int 0x03);
-  set_int32_le buf (off + 5) (Int32.of_float entry.stat.st_mtime);
+  write16le buf off 0x5455;
+  write16le buf (off + 2) 0x0005;
+  write8 buf (off + 4) (char_of_int 0x03);
+  write32le buf (off + 5) (Int32.of_float entry.stat.st_mtime);
   let off = off + 9 in
 
   (* extra field: Info-ZIP Unix (new) *)
-  set_int16_le buf off 0x7875;
-  set_int16_le buf (off + 2) 0x000b;
-  set buf (off + 4) (char_of_int 0x01);
-  set buf (off + 5) (char_of_int 0x04);
-  set_int32_le buf (off + 6) (Int32.of_int entry.stat.st_uid);
-  set buf (off + 10) (char_of_int 0x04);
-  set_int32_le buf (off + 11) (Int32.of_int entry.stat.st_gid);
+  write16le buf off 0x7875;
+  write16le buf (off + 2) 0x000b;
+  write8 buf (off + 4) (char_of_int 0x01);
+  write8 buf (off + 5) (char_of_int 0x04);
+  write32le buf (off + 6) (Int32.of_int entry.stat.st_uid);
+  write8 buf (off + 10) (char_of_int 0x04);
+  write32le buf (off + 11) (Int32.of_int entry.stat.st_gid);
   let _off = off + 15 in
 
   (* file comment (variable size)
@@ -399,61 +409,71 @@ let write_entry buf entry =
   ()
 
 let write_eocd buf off entries =
-  let open Bigstringaf in
   let size_of_central_directory =
     off - (List.nth entries 0).zip_central_directory_entry_offset
   in
 
   (* end of central dir signature    4 bytes  (0x06054b50) *)
-  set_int32_le buf off 0x06054b50l;
+  write32le buf off 0x06054b50l;
   let off = off + 4 in
 
   (* number of this disk             2 bytes *)
-  set_int16_le buf off 0x0000;
+  write16le buf off 0x0000;
   let off = off + 2 in
 
   (* number of the disk with the
      start of the central directory  2 bytes *)
-  set_int16_le buf off 0x0000;
+  write16le buf off 0x0000;
   let off = off + 2 in
 
   (* total number of entries in the
      central directory on this disk  2 bytes *)
-  set_int16_le buf off (List.length entries);
+  write16le buf off (List.length entries);
   let off = off + 2 in
 
   (* total number of entries in
      the central directory           2 bytes *)
-  set_int16_le buf off (List.length entries);
+  write16le buf off (List.length entries);
   let off = off + 2 in
 
   (* size of the central directory   4 bytes *)
-  set_int32_le buf off (Int32.of_int size_of_central_directory);
+  write32le buf off (Int32.of_int size_of_central_directory);
   let off = off + 4 in
 
   (* offset of start of central
      directory with respect to
      the starting disk number        4 bytes *)
-  set_int32_le buf off
+  write32le buf off
     (Int32.of_int (List.nth entries 0).zip_central_directory_entry_offset);
   let off = off + 4 in
 
   (* .ZIP file comment length        2 bytes *)
-  set_int16_le buf off 0x0000;
+  write16le buf off 0x0000;
   let _off = off + 2 in
 
   (* .ZIP file comment       (variable size)
      (nothing) *)
   ()
 
-let write_zip output_path input_paths =
+let write_zip pool output_path input_paths =
   let entries = input_paths |> List.map list_entries |> List.flatten in
   let total_size = populate_zip_offsets entries in
   with_output_buffer output_path total_size @@ fun (buf : memory_mapped_file) ->
-  entries |> List.iter (write_entry buf);
-  write_eocd buf (total_size - 22) entries;
+  let num_entries = List.length entries in
+  Domainslib.Task.parallel_for ~start:0 ~finish:(num_entries * 2)
+    ~body:(fun i ->
+      if i = num_entries * 2 then write_eocd buf (total_size - 22) entries
+      else if i mod 2 = 0 then write_crc32 buf (List.nth entries (i / 2))
+      else write_entry buf (List.nth entries (i / 2)))
+    pool;
   ()
 
+let with_domainslib_pool ?(num_domains = Domain.recommended_domain_count ()) f =
+  let pool = Domainslib.Task.setup_pool ~num_domains () in
+  Fun.protect ~finally:(fun () -> Domainslib.Task.teardown_pool pool)
+  @@ fun () -> Domainslib.Task.run pool (fun () -> f pool)
+
 let run zipfile paths =
-  write_zip zipfile paths;
+  with_domainslib_pool @@ fun pool ->
+  write_zip pool zipfile paths;
   ()

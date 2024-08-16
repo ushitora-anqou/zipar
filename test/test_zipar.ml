@@ -61,7 +61,9 @@ let test_write_zip _text_ctxt =
       let output_path = Filename.temp_file "zipar-test-" ".zip" in
       Fun.protect ~finally:(fun () -> Unix.unlink output_path) @@ fun () ->
       let input_paths = [ "." ] in
-      Cmd.write_zip output_path input_paths;
+      Cmd.(
+        with_domainslib_pool ~num_domains:1 (fun pool ->
+            write_zip pool output_path input_paths));
       let expected_output_path = "../testdir1-inside.zip" in
       let diff_res =
         Sys.command

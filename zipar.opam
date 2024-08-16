@@ -16,6 +16,7 @@ depends: [
   "extunix"
   "bigstringaf"
   "checkseum"
+  "domainslib"
   "odoc" {with-doc}
   "ocamlformat" {= "0.26.2" & with-dev-setup}
   "ocaml-lsp-server" {with-dev-setup}

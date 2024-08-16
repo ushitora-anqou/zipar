@@ -1,5 +1,5 @@
 (library
  (name zipar)
  (preprocess (pps ppx_deriving.make))
- (libraries unix extunix bigstringaf checkseum)
+ (libraries unix extunix bigstringaf checkseum domainslib)
 )
