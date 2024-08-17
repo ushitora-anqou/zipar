@@ -123,6 +123,7 @@ let test_write_zip ctxt =
       (String.trim rsync_stdout);
     ()
   in
+  e2e "../../../test/testdata/testdir6" 376;
   e2e "../../../test/testdata/testdir5" 450
     ~expected_rsync_stdout:
       {|

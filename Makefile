@@ -38,3 +38,6 @@ generate-testdata:
 	mkdir -p test/testdata/testdir5
 	echo "aaaaaaaaaaaaaaaaaaaaaaaaaaaaa" > test/testdata/testdir5/a
 	cd test/testdata/testdir5; ln -s a b; ln -s /bin/sh c
+# testdir6
+	mkdir -p test/testdata/testdir6/はろー
+	echo "わーるど・いず・まいん" > test/testdata/testdir6/はろー/わーるど
