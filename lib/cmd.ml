@@ -77,7 +77,8 @@ let list_entries file_path =
               entries :=
                 make_entry ~file_path:(file_path ^ "/") ~stat () :: !entries
           | _ -> ());
-      List.rev !entries
+      !entries
+      |> List.sort (fun lhs rhs -> String.compare lhs.file_path rhs.file_path)
   | _ ->
       Printf.eprintf "list_entries: ignoring %s\n" file_path;
       []
