@@ -9,7 +9,7 @@ homepage: "https://github.com/ushitora-anqou/zipar"
 doc: "https://github.com/ushitora-anqou/zipar"
 bug-reports: "https://github.com/ushitora-anqou/zipar/issues"
 depends: [
-  "ocaml" {>= "4.13"}
+  "ocaml" {>= "5.0"}
   "dune" {>= "3.16"}
   "cmdliner"
   "ppx_deriving"
