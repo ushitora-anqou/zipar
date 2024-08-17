@@ -78,15 +78,15 @@ let test_populate_zip_info _text_ctxt =
   ()
 
 let test_write_zip _text_ctxt =
-  let e2e wd expected_size =
+  let e2e ?(expected_rsync_stdout = ".d..t...... ./") wd expected_size =
     with_wd wd @@ fun () ->
     let output_path = Filename.temp_file "zipar-test-" ".zip" in
     let output_unzip_path = output_path ^ ".unzip" in
     let output_rsync_path = output_path ^ ".rsync" in
     Fun.protect ~finally:(fun () ->
-        Unix.unlink output_path;
-        Unix.unlink output_rsync_path;
-        ignore (command "rm" [ "-rf"; output_unzip_path ]))
+        command "rm"
+          [ "-rf"; output_path; output_rsync_path; output_unzip_path ]
+        |> ignore)
     @@ fun () ->
     (* Zip everything in the current directory *)
     let input_paths = [ "." ] in
@@ -109,9 +109,15 @@ let test_write_zip _text_ctxt =
     let ic = open_in_bin output_rsync_path in
     Fun.protect ~finally:(fun () -> close_in ic) @@ fun () ->
     let rsync_stdout = In_channel.input_all ic in
-    assert (String.trim rsync_stdout = ".d..t...... ./");
+    assert (String.trim rsync_stdout = String.trim expected_rsync_stdout);
     ()
   in
+  e2e "../../../test/testdata/testdir5" 450
+    ~expected_rsync_stdout:
+      {|
+.d..t...... ./
+.L..t...... b -> a
+.L..t...... c -> /bin/sh|};
   e2e "../../../test/testdata/testdir1" 478;
   e2e "../../../test/testdata/testdir3" 9021640;
   e2e "../../../test/testdata/testdir4" 9021854;

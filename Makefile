@@ -34,3 +34,7 @@ generate-testdata:
 # testdir4
 	mkdir -p test/testdata/testdir4
 	seq 65536 | while read i; do touch test/testdata/testdir4/$${i} & done; wait
+# testdir5
+	mkdir -p test/testdata/testdir5
+	echo "aaaaaaaaaaaaaaaaaaaaaaaaaaaaa" > test/testdata/testdir5/a
+	cd test/testdata/testdir5; ln -s a b; ln -s /bin/sh c

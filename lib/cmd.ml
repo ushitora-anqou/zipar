@@ -24,6 +24,8 @@ type entry = {
   file_path : string;
   stat : Unix.stats;
   size : int; [@default 0]
+  symlink : string option;
+      (* symlink should be set only if stat.st_kind = S_LNK *)
   mutable zip_local_file_header_offset : int; [@default 0]
   mutable zip_central_directory_entry_offset : int; [@default 0]
 }
@@ -34,12 +36,19 @@ let read_regular_file_size file_path =
   Fun.protect ~finally:(fun () -> Unix.close fd) @@ fun () ->
   Unix.lseek fd 0 SEEK_END
 
+let make_entry_for_reg stat file_path =
+  let size = read_regular_file_size file_path in
+  make_entry ~file_path ~stat ~size ()
+
+let make_entry_for_lnk stat file_path =
+  let symlink = Unix.readlink file_path in
+  make_entry ~file_path ~stat ~size:(String.length symlink) ~symlink ()
+
 let list_entries file_path =
   let stat = Unix.lstat file_path in
   match stat.st_kind with
-  | S_REG ->
-      let size = read_regular_file_size file_path in
-      [ make_entry ~file_path ~stat ~size () ]
+  | S_REG -> [ make_entry_for_reg stat file_path ]
+  | S_LNK -> [ make_entry_for_lnk stat file_path ]
   | S_DIR ->
       let entries = ref [] in
 
@@ -62,15 +71,16 @@ let list_entries file_path =
           in
           match (filename, stat.st_kind) with
           | ("." | ".."), _ -> ()
-          | _, S_REG ->
-              let size = read_regular_file_size file_path in
-              entries := make_entry ~file_path ~stat ~size () :: !entries
+          | _, S_REG -> entries := make_entry_for_reg stat file_path :: !entries
+          | _, S_LNK -> entries := make_entry_for_lnk stat file_path :: !entries
           | _, S_DIR ->
               entries :=
                 make_entry ~file_path:(file_path ^ "/") ~stat () :: !entries
           | _ -> ());
       List.rev !entries
-  | _ -> assert false
+  | _ ->
+      Printf.eprintf "list_entries: ignoring %s\n" file_path;
+      []
 
 let populate_zip_info entries =
   let offset = ref 0 in
@@ -273,11 +283,17 @@ let write_last_mod_file_time_date buf off (mtime : Unix.tm) =
 
 let write_crc32 buf entry =
   let checksum =
-    if entry.size > 0 then
-      with_input_buffer entry.file_path (fun ibuf ->
-          Checkseum.Crc32.(digest_bigstring ibuf 0 entry.size default)
-          |> Optint.to_int32)
-    else 0l
+    match entry.stat.st_kind with
+    | S_DIR -> 0l
+    | S_REG ->
+        with_input_buffer entry.file_path (fun ibuf ->
+            Checkseum.Crc32.(digest_bigstring ibuf 0 entry.size default)
+            |> Optint.to_int32)
+    | S_LNK ->
+        Checkseum.Crc32.(
+          digest_string (Option.get entry.symlink) 0 entry.size default)
+        |> Optint.to_int32
+    | _ -> assert false
   in
   write32le buf (entry.zip_local_file_header_offset + 14) checksum;
   write32le buf (entry.zip_central_directory_entry_offset + 16) checksum;
@@ -363,9 +379,13 @@ let write_local_file_header buf entry =
     off := !off + 20);
 
   (* file data *)
-  if entry.size > 0 then
-    with_input_buffer entry.file_path (fun ibuf ->
-        blit ibuf ~src_off:0 buf ~dst_off:!off ~len:entry.size);
+  (match entry.stat.st_kind with
+  | S_DIR -> ()
+  | S_REG ->
+      with_input_buffer entry.file_path (fun ibuf ->
+          blit ibuf ~src_off:0 buf ~dst_off:!off ~len:entry.size)
+  | S_LNK -> off := write_string buf !off (Option.get entry.symlink)
+  | _ -> assert false);
   ()
 
 let write_central_directory_entry buf entry =
@@ -445,12 +465,13 @@ let write_central_directory_entry buf entry =
     match entry.stat.st_kind with
     | S_REG -> 0o100000
     | S_DIR -> 0o040000
-    | S_CHR | S_BLK | S_LNK | S_FIFO | S_SOCK -> assert false
+    | S_LNK -> 0o120000
+    | S_CHR | S_BLK | S_FIFO | S_SOCK -> assert false
   in
   let dos_attr =
     (* ADVSHR *)
     match entry.stat.st_kind with
-    | S_REG -> 0o00
+    | S_REG | S_LNK -> 0o00
     | S_DIR -> 0o20
     | _ -> assert false
   in
