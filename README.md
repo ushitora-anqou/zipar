@@ -5,7 +5,7 @@ It does **NOT** compress any files; instead,
 it simply combines them into a single zip file,
 using multiple threads for maximum speed.
 
-## A simple benchmark
+## A quick benchmark
 
 I ran a benchmark comparing zip(1) and ZipAr
 on my setup (Ubuntu 24.04 LTS, Intel Core i7-8700, 32GiB RAM)
